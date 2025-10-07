@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerGuard, ThrottlerModule, ThrottlerModuleOptions } from '@nestjs/throttler';
-import { ThrottlerStorageRedisService } from '@nestjs/throttler-storage-redis';
 import { APP_GUARD } from '@nestjs/core';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { AuthModule } from './auth/auth.module.js';
@@ -10,7 +9,9 @@ import { QueueModule } from './queue/queue.module.js';
 import { PlaybackModule } from './playback/playback.module.js';
 import { SettingsModule } from './settings/settings.module.js';
 import { SocketsModule } from './sockets/sockets.module.js';
+import { SearchModule } from './search/search.module.js';
 import Redis from 'ioredis';
+import { RedisThrottlerStorage } from './common/redis-throttler.storage.js';
 
 function createThrottlerOptions(): ThrottlerModuleOptions {
   const redisUrl = process.env.REDIS_URL;
@@ -23,7 +24,8 @@ function createThrottlerOptions(): ThrottlerModuleOptions {
     ]
   };
   if (redisUrl) {
-    options.storage = new ThrottlerStorageRedisService(new Redis(redisUrl));
+    const redis = new Redis(redisUrl, { lazyConnect: true });
+    options.storage = new RedisThrottlerStorage(redis);
   }
   return options;
 }
@@ -38,7 +40,8 @@ function createThrottlerOptions(): ThrottlerModuleOptions {
     QueueModule,
     PlaybackModule,
     SettingsModule,
-    SocketsModule
+    SocketsModule,
+    SearchModule
   ],
   providers: [
     {

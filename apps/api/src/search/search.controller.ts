@@ -1,20 +1,14 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
-import { YoutubeService } from './youtube.service.js';
-import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
-import { youtubeSearchResponseSchema } from '@playall/types';
+import { Controller, Get, Query } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
+import { SearchService } from './search.service.js';
 
 @Controller('search')
-@UseGuards(ThrottlerGuard)
 export class SearchController {
-  constructor(private readonly youtubeService: YoutubeService) {}
+  constructor(private readonly searchService: SearchService) {}
 
   @Get()
-  @Throttle(5, 1)
-  async search(@Query('q') q: string) {
-    const query = (q ?? '').trim();
-    if (!query) {
-      return youtubeSearchResponseSchema.parse({ items: [] });
-    }
-    return youtubeSearchResponseSchema.parse(await this.youtubeService.searchVideos(query));
+  @Throttle({ default: { limit: 5, ttl: 1 } })
+  async search(@Query('q') query = '') {
+    return this.searchService.search(query, process.env.YOUTUBE_API_KEY);
   }
 }
