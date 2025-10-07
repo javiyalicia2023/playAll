@@ -1,11 +1,14 @@
-import type { ThrottlerStorage, ThrottlerStorageRecord } from '@nestjs/throttler';
+import type { ThrottlerStorage } from '@nestjs/throttler';
 import type Redis from 'ioredis';
 
-const DEFAULT_TTL_SECONDS = 60;
+const KEY_PREFIX = 'throttler:';
+
+export type RedisThrottlerRecord = {
+  totalHits: number;
+  timeToExpire: number;
+};
 
 export class RedisThrottlerStorage implements ThrottlerStorage {
-  private readonly keyPrefix = 'throttler:';
-
   constructor(private readonly redis: Redis) {
     void this.redis.connect().catch((error) => {
       // eslint-disable-next-line no-console
@@ -14,38 +17,30 @@ export class RedisThrottlerStorage implements ThrottlerStorage {
   }
 
   private buildKey(key: string): string {
-    return `${this.keyPrefix}${key}`;
+    return `${KEY_PREFIX}${key}`;
   }
 
-  async getRecord(key: string): Promise<ThrottlerStorageRecord[]> {
-    const raw = await this.redis.get(this.buildKey(key));
-    if (!raw) {
-      return [];
+  async increment(key: string, ttlSeconds: number): Promise<RedisThrottlerRecord> {
+    const redisKey = this.buildKey(key);
+    const totalHits = await this.redis.incr(redisKey);
+    if (totalHits === 1) {
+      await this.redis.pexpire(redisKey, ttlSeconds * 1000);
     }
-    try {
-      const parsed = JSON.parse(raw) as ThrottlerStorageRecord[];
-      return Array.isArray(parsed) ? parsed : [];
-    } catch (error) {
-      // eslint-disable-next-line no-console
-      console.error('Failed to parse throttler record', error);
-      return [];
+
+    let ttl = await this.redis.pttl(redisKey);
+    if (ttl < 0) {
+      // If key has no TTL (e.g. Redis older than 2.6 returns -1), ensure it expires.
+      await this.redis.pexpire(redisKey, ttlSeconds * 1000);
+      ttl = ttlSeconds * 1000;
     }
+
+    return {
+      totalHits,
+      timeToExpire: ttl
+    };
   }
 
-  async addRecord(key: string, ttl: number, record: ThrottlerStorageRecord): Promise<void> {
-    const existing = await this.getRecord(key);
-    existing.push(record);
-    const ttlSeconds = Math.max(Math.ceil(ttl), DEFAULT_TTL_SECONDS);
-    await this.redis.set(this.buildKey(key), JSON.stringify(existing), 'EX', ttlSeconds);
-  }
-
-  async removeRecord(key: string, record: ThrottlerStorageRecord): Promise<void> {
-    const existing = await this.getRecord(key);
-    const filtered = existing.filter((entry) => entry.ttl !== record.ttl);
-    if (filtered.length === 0) {
-      await this.redis.del(this.buildKey(key));
-      return;
-    }
-    await this.redis.set(this.buildKey(key), JSON.stringify(filtered));
+  async resetKey(key: string): Promise<void> {
+    await this.redis.del(this.buildKey(key));
   }
 }

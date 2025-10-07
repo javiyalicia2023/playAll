@@ -24,6 +24,7 @@ import {
 } from '@playall/types';
 import { ForbiddenStructuredException } from '../common/errors.js';
 import { createAdapter } from '@socket.io/redis-adapter';
+import type { Adapter } from 'socket.io-adapter';
 import Redis from 'ioredis';
 
 type RoomSocketData = {
@@ -59,8 +60,8 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       this.redisPub = new Redis(redisUrl, { lazyConnect: true });
       this.redisSub = this.redisPub.duplicate();
       await Promise.all([this.redisPub.connect(), this.redisSub!.connect()]);
-      const redisAdapter = createAdapter(this.redisPub, this.redisSub);
-      this.server.adapter(redisAdapter as unknown as Parameters<Namespace['adapter']>[0]);
+      const redisAdapter = createAdapter(this.redisPub, this.redisSub) as unknown as Adapter;
+      this.server.adapter = redisAdapter;
       this.logger.log('Socket.IO Redis adapter initialised');
     } catch (error) {
       this.logger.error('Failed to initialise Redis adapter, falling back to in-memory adapter', error as Error);
