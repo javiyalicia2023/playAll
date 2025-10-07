@@ -1,0 +1,10 @@
+{
+  "name": "@playall/config",
+  "version": "0.1.0",
+  "private": true,
+  "files": [
+    "eslint.base.cjs",
+    "prettier.config.cjs",
+    "tsconfig.base.json"
+  ]
+}
