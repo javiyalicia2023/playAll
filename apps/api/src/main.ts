@@ -1,6 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module.js';
-import * as cookieParser from 'cookie-parser';
+import cookieParser from 'cookie-parser';
 import { ZodValidationPipe } from 'nestjs-zod';
 import { json } from 'express';
 import pinoHttp from 'pino-http';
@@ -16,7 +16,7 @@ async function bootstrap() {
   app.use(cookieParser(process.env.SESSION_SECRET));
   app.use(json({ limit: '1mb' }));
   app.setGlobalPrefix('api');
-  app.useGlobalPipes(new ZodValidationPipe({ createValidationException: (error) => error }));
+  app.useGlobalPipes(new ZodValidationPipe());
 
   const port = process.env.PORT ? Number(process.env.PORT) : 3333;
   await app.listen(port);

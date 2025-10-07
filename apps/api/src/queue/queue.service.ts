@@ -3,9 +3,22 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { RoomsService } from '../rooms/rooms.service.js';
 import { ForbiddenStructuredException, NotFoundStructuredException } from '../common/errors.js';
 import { queueItemSchema } from '@playall/types';
+import type { QueueItemDto } from '@playall/types';
 import { RoomsGateway } from '../sockets/rooms.gateway.js';
 
 @Injectable()
+type QueueItemRecord = {
+  id: string;
+  roomId: string;
+  videoId: string;
+  title: string;
+  durationSeconds: number | null;
+  addedById: string;
+  position: number;
+  played: boolean;
+  addedBy?: { displayName: string };
+};
+
 export class QueueService {
   constructor(
     private readonly prisma: PrismaService,
@@ -13,30 +26,35 @@ export class QueueService {
     @Inject(forwardRef(() => RoomsGateway)) private readonly roomsGateway: RoomsGateway
   ) {}
 
-  async getQueue(roomId: string) {
-    const items = await this.prisma.queueItem.findMany({
+  async getQueue(roomId: string): Promise<QueueItemDto[]> {
+    const items = (await this.prisma.queueItem.findMany({
       where: { roomId },
       orderBy: { position: 'asc' },
       include: {
         addedBy: true
       }
-    });
-    return items.map((item) =>
-      queueItemSchema.parse({
+    })) as QueueItemRecord[];
+    return items.map((item: QueueItemRecord) => {
+      const addedByDisplayName = item.addedBy?.displayName ?? 'Unknown';
+      return queueItemSchema.parse({
         id: item.id,
         roomId: item.roomId,
         videoId: item.videoId,
         title: item.title,
         durationSeconds: item.durationSeconds ?? null,
         addedById: item.addedById,
-        addedByDisplayName: item.addedBy.displayName,
+        addedByDisplayName,
         position: item.position,
         played: item.played
-      })
-    );
+      });
+    });
   }
 
-  async addToQueue(roomId: string, userId: string, dto: { videoId: string; title: string; durationSeconds?: number }) {
+  async addToQueue(
+    roomId: string,
+    userId: string,
+    dto: { videoId: string; title: string; durationSeconds?: number }
+  ): Promise<QueueItemDto> {
     const membership = await this.roomsService.assertMember(roomId, userId);
     const settings = await this.prisma.roomSettings.findUnique({ where: { roomId } });
     const allowGuestEnqueue = settings?.allowGuestEnqueue ?? true;
@@ -54,19 +72,19 @@ export class QueueService {
     });
 
     const position = (maxPosition._max.position ?? -1) + 1;
-    const item = await this.prisma.queueItem.create({
+    const item = (await this.prisma.queueItem.create({
       data: {
         roomId,
         videoId: dto.videoId,
         title: dto.title.trim(),
-        durationSeconds: dto.durationSeconds,
+        durationSeconds: dto.durationSeconds ?? null,
         addedById: userId,
         position
       },
       include: {
         addedBy: true
       }
-    });
+    })) as QueueItemRecord;
 
     await this.roomsGateway.emitQueueUpdated(roomId);
 
@@ -77,15 +95,15 @@ export class QueueService {
       title: item.title,
       durationSeconds: item.durationSeconds ?? null,
       addedById: item.addedById,
-      addedByDisplayName: item.addedBy.displayName,
+      addedByDisplayName: item.addedBy?.displayName ?? 'Unknown',
       position: item.position,
       played: item.played
     });
   }
 
-  async removeFromQueue(roomId: string, itemId: string, userId: string) {
+  async removeFromQueue(roomId: string, itemId: string, userId: string): Promise<void> {
     const membership = await this.roomsService.assertMember(roomId, userId);
-    const item = await this.prisma.queueItem.findUnique({ where: { id: itemId } });
+    const item = (await this.prisma.queueItem.findUnique({ where: { id: itemId } })) as QueueItemRecord | null;
     if (!item || item.roomId !== roomId) {
       throw new NotFoundStructuredException('QUEUE_ITEM_NOT_FOUND', 'Queue item not found.');
     }
@@ -98,11 +116,11 @@ export class QueueService {
     await this.roomsGateway.emitQueueUpdated(roomId);
   }
 
-  async takeNext(roomId: string) {
-    const item = await this.prisma.queueItem.findFirst({
+  async takeNext(roomId: string): Promise<QueueItemDto | null> {
+    const item = (await this.prisma.queueItem.findFirst({
       where: { roomId, played: false },
       orderBy: { position: 'asc' }
-    });
+    })) as QueueItemRecord | null;
     if (!item) {
       return null;
     }

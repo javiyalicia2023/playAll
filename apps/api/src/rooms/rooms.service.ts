@@ -9,7 +9,15 @@ import {
   roomSettingsSchema
 } from '@playall/types';
 import { ForbiddenStructuredException, NotFoundStructuredException } from '../common/errors.js';
-import type { RoomRole } from '@prisma/client';
+import type { RoomRole } from '@playall/types';
+
+type RoomMemberRecord = {
+  roomId: string;
+  userId: string;
+  role: RoomRole;
+  joinedAt: Date;
+  user?: { displayName: string };
+};
 
 @Injectable()
 export class RoomsService {
@@ -69,8 +77,10 @@ export class RoomsService {
       throw new NotFoundStructuredException('ROOM_NOT_FOUND', 'Room not found.');
     }
 
-    const existingMembership = room.members.find((m) => m.userId === userId);
-    let role: RoomRole = existingMembership?.role ?? 'GUEST';
+    const existingMembership = room.members.find(
+      (member: RoomMemberRecord) => member.userId === userId
+    ) as RoomMemberRecord | undefined;
+    const role: RoomRole = existingMembership?.role ?? 'GUEST';
 
     if (!existingMembership) {
       await this.prisma.roomMember.create({
@@ -92,12 +102,12 @@ export class RoomsService {
     });
   }
 
-  async assertMember(roomId: string, userId: string) {
-    const membership = await this.prisma.roomMember.findUnique({
+  async assertMember(roomId: string, userId: string): Promise<RoomMemberRecord> {
+    const membership = (await this.prisma.roomMember.findUnique({
       where: {
         roomId_userId: { roomId, userId }
       }
-    });
+    })) as RoomMemberRecord | null;
     if (!membership) {
       throw new ForbiddenStructuredException('NOT_A_MEMBER', 'User is not part of this room.');
     }
@@ -124,7 +134,7 @@ export class RoomsService {
       roomId: room.id,
       code: room.code,
       hostUserId: room.hostUserId,
-      members: room.members.map((member) =>
+      members: room.members.map((member: RoomMemberRecord & { user: { displayName: string } }) =>
         roomMemberSchema.parse({
           userId: member.userId,
           displayName: member.user.displayName,

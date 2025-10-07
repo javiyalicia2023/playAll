@@ -16,13 +16,22 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import {
   socketEvents,
   stateSyncEventSchema,
-  queueItemSchema,
   playbackStateSchema,
-  settingsUpdateSchema
+  settingsUpdateSchema,
+  RoomRole
 } from '@playall/types';
 import { ForbiddenStructuredException } from '../common/errors.js';
 import { createAdapter } from '@socket.io/redis-adapter';
 import Redis from 'ioredis';
+
+type RoomSocketData = {
+  userId?: string;
+  roomId?: string;
+  role?: RoomRole;
+  currentVideo?: string | null;
+};
+
+type RoomSocket = Socket & { data: RoomSocketData };
 
 @WebSocketGateway({ namespace: '/rooms', cors: { origin: true, credentials: true } })
 @Injectable()
@@ -48,7 +57,8 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       this.redisPub = new Redis(redisUrl, { lazyConnect: true });
       this.redisSub = this.redisPub.duplicate();
       await Promise.all([this.redisPub.connect(), this.redisSub!.connect()]);
-      this.server.adapter(createAdapter(this.redisPub, this.redisSub));
+      const redisAdapter = createAdapter(this.redisPub, this.redisSub);
+      this.server.adapter(redisAdapter as unknown as any);
       this.logger.log('Socket.IO Redis adapter initialised');
     } catch (error) {
       this.logger.error('Failed to initialise Redis adapter, falling back to in-memory adapter', error as Error);
@@ -59,11 +69,11 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     }
   }
 
-  async handleConnection(client: Socket) {
+  async handleConnection(client: RoomSocket) {
     this.logger.log(`Client connected ${client.id}`);
   }
 
-  async handleDisconnect(client: Socket) {
+  async handleDisconnect(client: RoomSocket) {
     this.logger.log(`Client disconnected ${client.id}`);
   }
 
@@ -78,7 +88,7 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
   }
 
   @SubscribeMessage('join')
-  async handleJoin(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
+  async handleJoin(@ConnectedSocket() client: RoomSocket, @MessageBody() payload: unknown) {
     const data = this.parse('join', payload);
     const membership = await this.roomsService.assertMember(data.roomId, data.userId);
     client.data.userId = data.userId;
@@ -86,13 +96,13 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     client.data.role = membership.role;
     await client.join(`room:${data.roomId}`);
     const queue = await this.queueService.getQueue(data.roomId);
-    client.emit('queue.sync', queue.map((item) => queueItemSchema.parse(item)));
+    client.emit('queue.sync', queue);
     const playback = await this.playbackService.getPlaybackState(data.roomId);
     client.emit('playback.state', playbackStateSchema.parse(playback));
   }
 
   @SubscribeMessage('playback.load')
-  async handlePlaybackLoad(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
+  async handlePlaybackLoad(@ConnectedSocket() client: RoomSocket, @MessageBody() payload: unknown) {
     const data = this.parse('playback.load', payload);
     await this.ensureHost(client, data.roomId);
     await this.playbackService.upsertState(data.roomId, {
@@ -111,7 +121,7 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
   }
 
   @SubscribeMessage('playback.play')
-  async handlePlaybackPlay(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
+  async handlePlaybackPlay(@ConnectedSocket() client: RoomSocket, @MessageBody() payload: unknown) {
     const data = this.parse('playback.play', payload);
     await this.ensureHost(client, data.roomId);
     const current = await this.playbackService.getPlaybackState(data.roomId);
@@ -130,7 +140,7 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
   }
 
   @SubscribeMessage('playback.pause')
-  async handlePlaybackPause(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
+  async handlePlaybackPause(@ConnectedSocket() client: RoomSocket, @MessageBody() payload: unknown) {
     const data = this.parse('playback.pause', payload);
     await this.ensureHost(client, data.roomId);
     const current = await this.playbackService.getPlaybackState(data.roomId);
@@ -149,7 +159,7 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
   }
 
   @SubscribeMessage('playback.seek')
-  async handlePlaybackSeek(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
+  async handlePlaybackSeek(@ConnectedSocket() client: RoomSocket, @MessageBody() payload: unknown) {
     const data = this.parse('playback.seek', payload);
     await this.ensureHost(client, data.roomId);
     const current = await this.playbackService.getPlaybackState(data.roomId);
@@ -168,7 +178,7 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
   }
 
   @SubscribeMessage('queue.add')
-  async handleQueueAdd(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
+  async handleQueueAdd(@ConnectedSocket() client: RoomSocket, @MessageBody() payload: unknown) {
     const data = this.parse('queue.add', payload);
     const userId = this.ensureUser(client);
     await this.queueService.addToQueue(data.roomId, userId, {
@@ -179,14 +189,14 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
   }
 
   @SubscribeMessage('queue.remove')
-  async handleQueueRemove(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
+  async handleQueueRemove(@ConnectedSocket() client: RoomSocket, @MessageBody() payload: unknown) {
     const data = this.parse('queue.remove', payload);
     const userId = this.ensureUser(client);
     await this.queueService.removeFromQueue(data.roomId, data.itemId, userId);
   }
 
   @SubscribeMessage('queue.next')
-  async handleQueueNext(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
+  async handleQueueNext(@ConnectedSocket() client: RoomSocket, @MessageBody() payload: unknown) {
     const data = this.parse('queue.next', payload);
     await this.ensureHost(client, data.roomId);
     const next = await this.queueService.takeNext(data.roomId);
@@ -201,7 +211,7 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     }
   }
 
-  async emitQueueUpdated(roomId: string) {
+  async emitQueueUpdated(roomId: string): Promise<void> {
     const items = await this.queueService.getQueue(roomId);
     this.server.to(`room:${roomId}`).emit('queue.updated', items);
   }
@@ -242,7 +252,7 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     this.syncIntervals.set(roomId, interval);
   }
 
-  private ensureUser(client: Socket) {
+  private ensureUser(client: RoomSocket) {
     const userId = client.data.userId as string | undefined;
     if (!userId) {
       throw new ForbiddenStructuredException('SESSION_REQUIRED', 'Socket missing user session.');
@@ -250,7 +260,7 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     return userId;
   }
 
-  async ensureHost(client: Socket, roomId: string) {
+  async ensureHost(client: RoomSocket, roomId: string) {
     const userId = this.ensureUser(client);
     const membership = await this.roomsService.assertMember(roomId, userId);
     if (membership.role !== 'HOST') {
@@ -259,7 +269,7 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     return membership;
   }
 
-  async emitSettingsUpdated(roomId: string) {
+  async emitSettingsUpdated(roomId: string): Promise<void> {
     const settings = await this.prisma.roomSettings.findUnique({ where: { roomId } });
     if (settings) {
       this.server

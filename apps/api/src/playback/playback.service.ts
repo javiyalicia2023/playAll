@@ -1,12 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { playbackStateSchema } from '@playall/types';
+import type { PlaybackStateDto } from '@playall/types';
 
 @Injectable()
 export class PlaybackService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async getPlaybackState(roomId: string) {
+  async getPlaybackState(roomId: string): Promise<PlaybackStateDto> {
     const state = await this.prisma.playbackState.findUnique({ where: { roomId } });
     if (!state) {
       return playbackStateSchema.parse({
@@ -29,7 +30,10 @@ export class PlaybackService {
     });
   }
 
-  async upsertState(roomId: string, data: { videoId?: string | null; isPlaying: boolean; positionMs: number; playbackRate: number }) {
+  async upsertState(
+    roomId: string,
+    data: { videoId?: string | null; isPlaying: boolean; positionMs: number; playbackRate: number }
+  ): Promise<PlaybackStateDto> {
     const state = await this.prisma.playbackState.upsert({
       where: { roomId },
       update: {
