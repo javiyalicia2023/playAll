@@ -7,7 +7,6 @@ import { AuthModule } from './auth/auth.module.js';
 import { RoomsModule } from './rooms/rooms.module.js';
 import { QueueModule } from './queue/queue.module.js';
 import { PlaybackModule } from './playback/playback.module.js';
-import { SearchModule } from './search/search.module.js';
 import { SettingsModule } from './settings/settings.module.js';
 import { SocketsModule } from './sockets/sockets.module.js';
 import Redis from 'ioredis';
@@ -37,7 +36,6 @@ function createThrottlerOptions(): ThrottlerModuleOptions {
     RoomsModule,
     QueueModule,
     PlaybackModule,
-    SearchModule,
     SettingsModule,
     SocketsModule
   ],

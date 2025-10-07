@@ -5,8 +5,7 @@ import {
   QueueItemDto,
   RoomDetailDto,
   RoomSettingsDto,
-  SessionResponse,
-  YoutubeSearchResponse
+  SessionResponse
 } from '@playall/types';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3333/api';
@@ -79,6 +78,5 @@ export const api = {
     request<QueueItemDto>(`/rooms/${roomId}/queue`, { method: 'POST', body: JSON.stringify(payload) }),
   updateSettings: (roomId: string, payload: { allowGuestEnqueue: boolean }) =>
     request<RoomSettingsDto>(`/rooms/${roomId}/settings`, { method: 'POST', body: JSON.stringify(payload) }),
-  getPlayback: (roomId: string) => request<PlaybackStateDto>(`/rooms/${roomId}/playback`),
-  search: (query: string) => request<YoutubeSearchResponse>(`/search?q=${encodeURIComponent(query)}`)
+  getPlayback: (roomId: string) => request<PlaybackStateDto>(`/rooms/${roomId}/playback`)
 };

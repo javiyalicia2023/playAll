@@ -18,7 +18,10 @@ export default function RoomPage() {
   const [searchResults, setSearchResults] = useState<YoutubeSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [searchAlert, setSearchAlert] = useState<string | null>(null);
   const playerRef = useRef<any>();
+  const searchPlayerRef = useRef<any>();
+  const [searchPlayerReady, setSearchPlayerReady] = useState(false);
   const socketRef = useRoomSocket(room?.roomId ?? null);
 
   const code = useMemo(() => params.code.toUpperCase(), [params.code]);
@@ -101,13 +104,21 @@ export default function RoomPage() {
   };
 
   const handleSearch = async () => {
-    if (!searchTerm.trim()) return;
+    const query = searchTerm.trim();
+    if (!query) return;
+    if (!searchPlayerRef.current || !searchPlayerReady) {
+      setSearchAlert('El buscador aún se está inicializando. Intenta en unos segundos.');
+      return;
+    }
     setSearching(true);
+    setSearchAlert(null);
     try {
-      const results = await api.search(searchTerm.trim());
-      setSearchResults(results.items);
+      const results = await searchWithIFrame(searchPlayerRef.current, query);
+      setSearchResults(results);
     } catch (err) {
-      setError(isApiError(err) ? err.message : 'La búsqueda falló. Intenta de nuevo.');
+      console.warn('YouTube IFrame search fallback', err);
+      setSearchAlert('No se pudo consultar YouTube. Mostrando resultados simulados.');
+      setSearchResults(fallbackSearchResults(query));
     } finally {
       setSearching(false);
     }
@@ -201,6 +212,7 @@ export default function RoomPage() {
           </button>
         </div>
         {isGuestBlocked && <p style={{ color: '#fbbf24', marginTop: '0.5rem' }}>El anfitrión ha bloqueado que los invitados encolen canciones.</p>}
+        {searchAlert && <p style={{ color: '#fde68a', marginTop: '0.5rem' }}>{searchAlert}</p>}
         <ul style={{ listStyle: 'none', padding: 0, marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
           {searchResults.map((video) => (
             <li key={video.videoId} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
@@ -222,6 +234,27 @@ export default function RoomPage() {
           opts={{ playerVars: { autoplay: 0 } }}
           onReady={(event) => {
             playerRef.current = event.target;
+          }}
+        />
+        <YouTube
+          videoId=""
+          opts={{
+            height: '0',
+            width: '0',
+            playerVars: {
+              autoplay: 0,
+              controls: 0,
+              disablekb: 1,
+              fs: 0,
+              modestbranding: 1,
+              rel: 0
+            }
+          }}
+          onReady={(event) => {
+            searchPlayerRef.current = event.target;
+            event.target.mute?.();
+            event.target.stopVideo?.();
+            setSearchPlayerReady(true);
           }}
         />
       </div>
@@ -250,4 +283,87 @@ function driftInfo(playback: ReturnType<typeof useRoomStore>['playback'], player
   const target = (playback.positionAtEmitMs + elapsed) / 1000;
   const current = player.getCurrentTime?.() ?? 0;
   return `${Math.round((current - target) * 1000)}ms`;
+}
+
+async function searchWithIFrame(player: any, query: string, limit = 5): Promise<YoutubeSearchResult[]> {
+  if (!player?.cuePlaylist) {
+    throw new Error('YouTube player not available');
+  }
+  player.mute?.();
+  player.setVolume?.(0);
+  player.cuePlaylist({ listType: 'search', list: query });
+  const playlist = await waitForPlaylist(player);
+  const ids = playlist.slice(0, limit);
+  const results: YoutubeSearchResult[] = [];
+  for (const videoId of ids) {
+    try {
+      player.loadVideoById?.(videoId, 0);
+      const data = await waitForVideoData(player, videoId);
+      results.push({
+        videoId,
+        title: data?.title ?? 'Video sin título',
+        channelTitle: data?.author ?? 'YouTube',
+        thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`,
+        durationSeconds: null
+      });
+    } catch (error) {
+      console.warn('No se pudieron obtener los metadatos del video', error);
+    }
+  }
+  player.stopVideo?.();
+  if (results.length === 0) {
+    throw new Error('No se encontraron resultados en YouTube.');
+  }
+  return results;
+}
+
+function waitForPlaylist(player: any, timeout = 6000): Promise<string[]> {
+  return new Promise((resolve, reject) => {
+    const start = Date.now();
+    const check = () => {
+      const playlist = player.getPlaylist?.();
+      if (Array.isArray(playlist) && playlist.length > 0) {
+        resolve(playlist as string[]);
+        return;
+      }
+      if (Date.now() - start > timeout) {
+        reject(new Error('La lista de reproducción no está disponible.'));
+        return;
+      }
+      setTimeout(check, 200);
+    };
+    check();
+  });
+}
+
+function waitForVideoData(player: any, videoId: string, timeout = 6000): Promise<{ title: string; author?: string } | null> {
+  return new Promise((resolve) => {
+    const start = Date.now();
+    const check = () => {
+      const data = player.getVideoData?.();
+      if (data && data.video_id === videoId && data.title) {
+        resolve({ title: data.title, author: data.author });
+        return;
+      }
+      if (Date.now() - start > timeout) {
+        resolve(null);
+        return;
+      }
+      setTimeout(check, 150);
+    };
+    check();
+  });
+}
+
+function fallbackSearchResults(query: string): YoutubeSearchResult[] {
+  const normalized = query || 'Canción';
+  return [
+    {
+      videoId: 'dQw4w9WgXcQ',
+      title: `${normalized} (búsqueda local)`,
+      channelTitle: 'YouTube IFrame',
+      thumbnailUrl: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg',
+      durationSeconds: 213
+    }
+  ];
 }

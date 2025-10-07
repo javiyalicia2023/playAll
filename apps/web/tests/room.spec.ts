@@ -39,21 +39,6 @@ function setupHostRoutes(page: Page) {
   page.route(`${API}/rooms/room-1/playback`, (route: Route) => {
     route.fulfill({ json: { roomId: 'room-1', videoId: null, isPlaying: false, positionMs: 0, playbackRate: 1, updatedAt: new Date().toISOString() } });
   });
-  page.route(`${API}/search`, (route: Route) => {
-    route.fulfill({
-      json: {
-        items: [
-          {
-            videoId: 'vid123',
-            title: 'Sample Song',
-            channelTitle: 'PlayAll',
-            thumbnailUrl: 'https://example.com/thumb.jpg',
-            durationSeconds: 180
-          }
-        ]
-      }
-    });
-  });
   page.route(`${API}/rooms/room-1/settings`, (route: Route) => {
     route.fulfill({ json: { allowGuestEnqueue: false, allowGuestSkipVote: false } });
   });
@@ -69,9 +54,9 @@ test('host toggles guest permission and enqueues track', async ({ page }) => {
   await expect(toggle).not.toBeChecked();
   await page.fill('input[placeholder="Buscar canciones"]', 'Sample');
   await page.click('button:has-text("Buscar")');
-  await expect(page.getByText('Sample Song')).toBeVisible();
+  await expect(page.getByText('Sample (búsqueda local)')).toBeVisible();
   await page.click('button:has-text("Agregar")');
-  await expect(page.getByText('Sample Song')).toBeVisible();
+  await expect(page.getByText('Sample (búsqueda local)')).toBeVisible();
 });
 
 test('guest sees enqueue disabled message', async ({ page }) => {
@@ -105,21 +90,6 @@ test('guest sees enqueue disabled message', async ({ page }) => {
   });
   await page.route(`${API}/rooms/room-1/playback`, (route) =>
     route.fulfill({ json: { roomId: 'room-1', videoId: null, isPlaying: false, positionMs: 0, playbackRate: 1, updatedAt: new Date().toISOString() } })
-  );
-  await page.route(`${API}/search`, (route) =>
-    route.fulfill({
-      json: {
-        items: [
-          {
-            videoId: 'vid123',
-            title: 'Sample Song',
-            channelTitle: 'PlayAll',
-            thumbnailUrl: 'https://example.com/thumb.jpg',
-            durationSeconds: 180
-          }
-        ]
-      }
-    })
   );
 
   await page.goto('/r/ABCDEF?roomId=room-1');

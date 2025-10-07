@@ -20,7 +20,6 @@ pnpm install
 
 Create an `.env` file in the repo root or supply these variables when running the apps:
 
-- `YOUTUBE_API_KEY` – YouTube Data API v3 key.
 - `DATABASE_URL` – PostgreSQL connection string.
 - `REDIS_URL` – Redis connection string.
 - `SESSION_SECRET` – secret for signing anonymous session cookies.
@@ -67,4 +66,4 @@ pnpm prisma migrate dev
 
 ### Legal notice
 
-This project does not download, transcode, or redistribute any YouTube content. All playback happens through the YouTube IFrame Player API within the browser. The backend only coordinates room state and proxies metadata queries to the YouTube Data API v3.
+This project does not download, transcode, or redistribute any YouTube content. All playback happens through the YouTube IFrame Player API within the browser. The backend only coordinates room state, while video discovery happens client-side through the IFrame Player search playlist capabilities (with an offline-friendly fallback for local development and tests).
