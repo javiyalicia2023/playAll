@@ -6,7 +6,6 @@ import { queueItemSchema } from '@playall/types';
 import type { QueueItemDto } from '@playall/types';
 import { RoomsGateway } from '../sockets/rooms.gateway.js';
 
-@Injectable()
 type QueueItemRecord = {
   id: string;
   roomId: string;
@@ -19,6 +18,7 @@ type QueueItemRecord = {
   addedBy?: { displayName: string };
 };
 
+@Injectable()
 export class QueueService {
   constructor(
     private readonly prisma: PrismaService,

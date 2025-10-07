@@ -171,3 +171,4 @@ export const socketEvents = {
 } as const;
 
 export type SocketEventMap = typeof socketEvents;
+export type SocketEventPayload<EventName extends keyof SocketEventMap> = z.infer<SocketEventMap[EventName]>;

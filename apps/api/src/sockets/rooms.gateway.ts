@@ -18,7 +18,9 @@ import {
   stateSyncEventSchema,
   playbackStateSchema,
   settingsUpdateSchema,
-  RoomRole
+  RoomRole,
+  type SocketEventMap,
+  type SocketEventPayload
 } from '@playall/types';
 import { ForbiddenStructuredException } from '../common/errors.js';
 import { createAdapter } from '@socket.io/redis-adapter';
@@ -58,7 +60,7 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       this.redisSub = this.redisPub.duplicate();
       await Promise.all([this.redisPub.connect(), this.redisSub!.connect()]);
       const redisAdapter = createAdapter(this.redisPub, this.redisSub);
-      this.server.adapter(redisAdapter as unknown as any);
+      this.server.adapter(redisAdapter as unknown as Parameters<Namespace['adapter']>[0]);
       this.logger.log('Socket.IO Redis adapter initialised');
     } catch (error) {
       this.logger.error('Failed to initialise Redis adapter, falling back to in-memory adapter', error as Error);
@@ -83,7 +85,10 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     await this.redisSub?.quit();
   }
 
-  private parse<EventName extends keyof typeof socketEvents>(event: EventName, payload: unknown) {
+  private parse<EventName extends keyof SocketEventMap>(
+    event: EventName,
+    payload: unknown
+  ): SocketEventPayload<EventName> {
     return socketEvents[event].parse(payload);
   }
 

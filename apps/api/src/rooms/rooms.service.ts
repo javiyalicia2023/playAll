@@ -9,6 +9,7 @@ import {
   roomSettingsSchema
 } from '@playall/types';
 import { ForbiddenStructuredException, NotFoundStructuredException } from '../common/errors.js';
+import type { Prisma } from '@prisma/client';
 import type { RoomRole } from '@playall/types';
 
 type RoomMemberRecord = {
@@ -36,7 +37,7 @@ export class RoomsService {
       code = generateRoomCode();
     }
 
-    const room = await this.prisma.$transaction(async (tx) => {
+    const room = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const created = await tx.room.create({
         data: {
           code,
