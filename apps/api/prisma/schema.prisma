@@ -1,0 +1,78 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RoomRole {
+  HOST
+  GUEST
+}
+
+model AppUser {
+  id          String       @id @default(uuid())
+  displayName String
+  createdAt   DateTime     @default(now())
+  memberships RoomMember[]
+  queueItems  QueueItem[]
+}
+
+model Room {
+  id            String         @id @default(uuid())
+  code          String         @unique
+  hostUserId    String
+  host          AppUser        @relation(fields: [hostUserId], references: [id])
+  createdAt     DateTime       @default(now())
+  isActive      Boolean        @default(true)
+  settings      RoomSettings?
+  members       RoomMember[]
+  playbackState PlaybackState?
+  queue         QueueItem[]
+}
+
+model RoomMember {
+  roomId   String
+  userId   String
+  role     RoomRole
+  joinedAt DateTime @default(now())
+
+  room Room @relation(fields: [roomId], references: [id])
+  user AppUser @relation(fields: [userId], references: [id])
+
+  @@id([roomId, userId])
+}
+
+model RoomSettings {
+  roomId             String  @id
+  allowGuestEnqueue  Boolean @default(true)
+  allowGuestSkipVote Boolean @default(false)
+  updatedAt          DateTime @default(now()) @updatedAt
+  room               Room    @relation(fields: [roomId], references: [id])
+}
+
+model QueueItem {
+  id              String  @id @default(uuid())
+  roomId          String
+  videoId         String
+  title           String
+  durationSeconds Int?
+  addedById       String
+  position        Int
+  played          Boolean @default(false)
+
+  room    Room    @relation(fields: [roomId], references: [id])
+  addedBy AppUser @relation(fields: [addedById], references: [id])
+}
+
+model PlaybackState {
+  roomId       String  @id
+  videoId      String?
+  isPlaying    Boolean @default(false)
+  positionMs   BigInt  @default(0)
+  playbackRate Float   @default(1.0)
+  updatedAt    DateTime @default(now()) @updatedAt
+  room         Room    @relation(fields: [roomId], references: [id])
+}

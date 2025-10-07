@@ -1,0 +1,22 @@
+{
+  "name": "playall-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@8.15.5",
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "start": "pnpm --filter api start:prod"
+  },
+  "pnpm": {
+    "packageExtensions": {
+      "@nestjs/core@*": {
+        "peerDependencies": {
+          "reflect-metadata": "^0.1.13"
+        }
+      }
+    }
+  }
+}
